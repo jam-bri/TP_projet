@@ -1,0 +1,69 @@
+{
+  "info": {
+    "name": "service_employe - tests d'intégration",
+    "description": "Tests d'intégration exécutés par Newman (étape 06b) contre le conteneur déployé. Variable baseUrl fournie par la pipeline (--env-var).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8081" },
+    { "key": "nomEmploye", "value": "" },
+    { "key": "idEmploye", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1 - Health check",
+      "request": { "method": "GET", "url": "{{baseUrl}}/actuator/health" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Statut 200', () => pm.response.to.have.status(200));",
+        "pm.test('Application UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+      ]}}]
+    },
+    {
+      "name": "2 - Création d'un employé",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/employes",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"nom\": \"{{nomEmploye}}\"}" }
+      },
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+          "// Nom unique : les tests passent même si la base contient des données d'exécutions précédentes",
+          "pm.collectionVariables.set('nomEmploye', 'CI-' + Date.now());"
+        ]}},
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('Statut 204 No Content', () => pm.response.to.have.status(204));"
+        ]}}
+      ]
+    },
+    {
+      "name": "3 - Liste contient l'employé créé",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/employes" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Statut 200', () => pm.response.to.have.status(200));",
+        "pm.test('Réponse JSON', () => pm.response.to.be.json);",
+        "const employe = pm.response.json().find(e => e.nom === pm.collectionVariables.get('nomEmploye'));",
+        "pm.test('Employé créé présent', () => pm.expect(employe).to.exist);",
+        "if (employe) pm.collectionVariables.set('idEmploye', employe.id);"
+      ]}}]
+    },
+    {
+      "name": "4 - Recherche par id",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/employes?idEmployes={{idEmploye}}" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Statut 200', () => pm.response.to.have.status(200));",
+        "const employes = pm.response.json();",
+        "pm.test('Un seul résultat', () => pm.expect(employes).to.have.lengthOf(1));",
+        "pm.test('Bon employé', () => pm.expect(employes[0].nom).to.eql(pm.collectionVariables.get('nomEmploye')));"
+      ]}}]
+    },
+    {
+      "name": "5 - Recherche d'un id inexistant",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/employes?idEmployes=999999" },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('Statut 200', () => pm.response.to.have.status(200));",
+        "pm.test('Tableau vide', () => pm.expect(pm.response.json()).to.be.an('array').that.is.empty);"
+      ]}}]
+    }
+  ]
+}
